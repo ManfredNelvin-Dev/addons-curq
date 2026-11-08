@@ -1,6 +1,4 @@
 #!/bin/bash
 
-# Update website_breadcrumb to remove breadcrumb_enabled
-odoo -u website_breadcrumb --stop-after-init
-# Uninstall website_share_filter_option_skype module
-click-odoo-uninstall -c $ODOO_RC -d $DB_NAME -m website_share_filter_option_skype
+# Update website_breadcrumb to remove breadcrumb_enabled, helpdesk_mgmt to resolve issue with field helpdesk_mgmt_portal_select_category not found
+odoo -u website_breadcrumb,helpdesk_mgmt --stop-after-init
