@@ -1,6 +1,23 @@
 import click
 import click_odoo
 
+from odoo.exceptions import MissingError
+
+AUTO_INSTALL_MODULES_TO_UNINSTALL = [
+    "crm_iap_enrich",
+    "crm_iap_mine",
+    "iap_crm",
+    "snailmail",
+    "snailmail_account",
+    "partner_autocomplete",
+    "website_share_filter_option_skype",
+]
+AUTO_INSTALL_MODULES_TO_INSTALL = [
+    "website_mass_mailing_altcha",
+    "website_payment_altcha",
+    "website_event_altcha",
+]
+
 
 @click.command()
 @click_odoo.env_options(default_log_level="error")
@@ -46,14 +63,60 @@ def main(env, dry_run):
             retired_modules.button_immediate_uninstall()
     else:
         click.echo("No retired modules.")
+
+    # Install auto_install modules where all dependencies are met
+    auto_install_modules = env["ir.module.module"].search(
+        [
+            ("state", "=", "uninstalled"),
+            ("auto_install", "=", True),
+            ("name", "in", AUTO_INSTALL_MODULES_TO_INSTALL),
+        ]
+    )
+    installed_module_names = set(
+        env["ir.module.module"].search([("state", "=", "installed")]).mapped("name")
+    )
+    auto_install_modules = auto_install_modules.filtered(
+        lambda module: all(
+            dependency.name in installed_module_names
+            for dependency in module.dependencies_id
+        )
+    )
+    if auto_install_modules:
+        module_names = ", ".join(auto_install_modules.mapped("name"))
+        click.echo("Installing auto-install modules: %s..." % module_names)
+        auto_install_modules.button_immediate_install()
+
+    # Uninstall auto_install modules we don't want
+    click.echo("Uninstalling auto-install modules...")
+    modules = env["ir.module.module"].search(
+        [
+            ("name", "in", AUTO_INSTALL_MODULES_TO_UNINSTALL),
+            ("state", "=", "installed"),
+        ]
+    )
+    if modules:
+        try:
+            modules.button_immediate_uninstall()
+        except MissingError:
+            modules.button_immediate_upgrade()
+            modules.button_immediate_uninstall()
+
+    # Uninstall the website_share_filter_option_skype module if it is installed
     website_share_filter_option_skype_module = env.ref(
         "base.module_website_share_filter_option_skype", False
     )
-    if (
-        website_share_filter_option_skype_module
-        and website_share_filter_option_skype_module.state == "installed"
-    ):
-        website_share_filter_option_skype_module.button_immediate_uninstall()
+
+    if website_share_filter_option_skype_module:
+        if website_share_filter_option_skype_module.state == "installed":
+            website_share_filter_option_skype_module.button_immediate_uninstall()
+        elif website_share_filter_option_skype_module.state == "to install":
+            website_share_filter_option_skype_module.button_install_cancel()
+        elif website_share_filter_option_skype_module.state == "to upgrade":
+            website_share_filter_option_skype_module.button_upgrade_cancel()
+            website_share_filter_option_skype_module.button_immediate_uninstall()
+        elif website_share_filter_option_skype_module.state == "to remove":
+            website_share_filter_option_skype_module.button_uninstall_cancel()
+            website_share_filter_option_skype_module.button_immediate_uninstall()
 
 
 if __name__ == "__main__":
